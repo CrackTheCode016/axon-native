@@ -22,16 +22,16 @@ pub mod bindings {
 
     pub fn serial_read(mut cx: FunctionContext) -> JsResult<JsString> {
         let path = cx.argument::<JsString>(0)?.value();
-        let mut port = SerialData::open_port(SETTINGS, &path).unwrap();
-        let data = SerialData::read_port(port.borrow_mut()).unwrap();
+        let mut port = SerialData::open_port(SETTINGS, &path).or_else(|e| cx.throw_error(e.to_string()))?;
+        let data = SerialData::read_port(port.borrow_mut()).or_else(|e| cx.throw_error(e.to_string()))?;
         Ok(cx.string(data))
     }
 
     pub fn serial_write(mut cx: FunctionContext) -> JsResult<JsBoolean> {
         let path = cx.argument::<JsString>(0)?.value();
         let data = cx.argument::<JsString>(1)?.value();
-        let mut port = SerialData::open_port(SETTINGS, &path).unwrap();
-        let result = SerialData::write_port(data, port.borrow_mut()).unwrap();
+        let mut port = SerialData::open_port(SETTINGS, &path).or_else(|e| cx.throw_error(e.to_string()))?;
+        let result = SerialData::write_port(data, port.borrow_mut()).or_else(|e| cx.throw_error(e.to_string()))?;
         Ok(cx.boolean(result))
     }
 

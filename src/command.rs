@@ -59,7 +59,7 @@ pub mod command {
                 pin: pin,
             };
 
-            match Handshake::send::<Command>(port.borrow_mut(), &command, AxonMessageType::Command) {
+            match Handshake::send::<Command>(port.borrow_mut(), &command, AxonMessageType::CommandMessage) {
                 Ok(response) => match response {
                     AxonMessageStatus::Success => Ok(CommandResponse::success(&command)),
                     AxonMessageStatus::Failure => Ok(CommandResponse::failure(&command))

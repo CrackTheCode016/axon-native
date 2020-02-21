@@ -9,24 +9,26 @@ pub mod handshake {
 
     #[derive(Deserialize, Serialize, Debug, PartialEq)]
     pub enum AxonHandshakeType {
-        HandshakeConnect,
-        HandshakeAccept,
+        HandshakeConnect = 18499,
+        HandshakeAccept = 18497,
     }
 
     #[derive(Serialize, Deserialize, PartialEq)]
     pub enum AxonMessageType {
-        Record,
-        State,
-        Command,
+        RecordMessage,
+        StateMessage,
+        CommandMessage,
     }
 
     #[derive(Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
     pub struct HandshakeRequest {
         handshake_type: AxonHandshakeType,
         message_type: AxonMessageType,
     }
 
     #[derive(Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
     pub struct HandshakeResponse {
         handshake_type: AxonHandshakeType,
     }
@@ -74,6 +76,7 @@ pub mod handshake {
                                     port.borrow_mut(),
                                 )?;
                                 Ok(loop {
+                                    // todo: maybe add a limit, as the loop can go on forever
                                     let data = SerialData::read_port(port.borrow_mut())?;
                                     if Self::check_type_from_str::<T>(&data) {
                                         let message: Message<T> = serde_json::from_str(&data)?;

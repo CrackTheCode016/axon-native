@@ -29,7 +29,7 @@ pub mod record {
     impl Record {
         pub fn watch(path: &String, settings: SerialPortSettings) -> Result<Record, Error> {
             let mut port = SerialData::open_port(settings, &path)?;
-            match Handshake::recieve::<Record>(port.borrow_mut(), AxonMessageType::Record) {
+            match Handshake::recieve::<Record>(port.borrow_mut(), AxonMessageType::RecordMessage) {
                Ok(response) => {
                     let record: Record = serde_json::from_str(&response.to_json_string()?)?;
                     Ok(record)

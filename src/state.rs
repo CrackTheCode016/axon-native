@@ -69,7 +69,7 @@ pub mod device_state {
             settings: SerialPortSettings,
         ) -> SingleResult<bool> {
             let mut port = SerialData::open_port(settings, &path)?;
-            match Handshake::recieve::<State>(port.borrow_mut(), AxonMessageType::State) {
+            match Handshake::recieve::<State>(port.borrow_mut(), AxonMessageType::StateMessage) {
                 Ok(response) => {
                     let state: State = serde_json::from_str(&response.to_json_string()?)?;
                     State::save_state(

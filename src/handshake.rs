@@ -1,11 +1,13 @@
 pub mod handshake {
     use crate::axonmessage::axonmessage::{AxonMessage, Message, Sendable};
+    use crate::serial::serial_handler::SerialData;
     use serde::de::DeserializeOwned;
     use serde::{Deserialize, Serialize};
-    use crate::serial::serial_handler::SerialData;
     use serialport::prelude::*;
     use std::borrow::BorrowMut;
     use std::io::{Error, ErrorKind};
+
+    const HANDSHAKE_PREFIX: char = 'H';
 
     #[derive(Deserialize, Serialize, Debug, PartialEq)]
     pub enum AxonHandshakeType {
@@ -15,9 +17,19 @@ pub mod handshake {
 
     #[derive(Serialize, Deserialize, PartialEq)]
     pub enum AxonMessageType {
-        RecordMessage,
-        StateMessage,
-        CommandMessage,
+        RecordMessage = 0,
+        StateMessage = 1,
+        CommandMessage = 2,
+    }
+
+    impl AxonMessageType {
+        fn to_int(&self) -> i8 {
+            match self {
+                AxonMessageType::CommandMessage => AxonMessageType::CommandMessage as i8,
+                AxonMessageType::StateMessage => AxonMessageType::StateMessage as i8,
+                AxonMessageType::RecordMessage => AxonMessageType::RecordMessage as i8,
+            }
+        }
     }
 
     #[derive(Serialize, Deserialize)]
@@ -59,7 +71,6 @@ pub mod handshake {
         where
             T: serde::de::DeserializeOwned,
         {
-
             let accept = HandshakeResponse {
                 handshake_type: AxonHandshakeType::HandshakeAccept,
             };
@@ -67,14 +78,16 @@ pub mod handshake {
             if Self::check_type_from_str::<HandshakeRequest>(&data) {
                 let parsed: Result<HandshakeRequest, serde_json::Error> =
                     serde_json::from_str(&data);
+
+                let mut accept_stringifed = String::new();
+                accept_stringifed.push(HANDSHAKE_PREFIX);
+                accept_stringifed.push_str(&accept.to_json_string()?);
+
                 match parsed {
                     Ok(result) => match result.handshake_type {
                         AxonHandshakeType::HandshakeConnect => {
                             if result.message_type == message_type {
-                                SerialData::write_port(
-                                    accept.to_json_string()?,
-                                    port.borrow_mut(),
-                                )?;
+                                SerialData::write_port(accept_stringifed, port.borrow_mut())?;
                                 Ok(loop {
                                     // todo: maybe add a limit, as the loop can go on forever
                                     let data = SerialData::read_port(port.borrow_mut())?;
@@ -103,9 +116,10 @@ pub mod handshake {
             }
         }
 
-         pub fn send<T: AxonMessage + Sendable>(
+        pub fn send<T: AxonMessage + Sendable>(
             port: &mut Box<dyn SerialPort>,
             sendable: &T,
+            prefix_byte: char,
             message_type: AxonMessageType,
         ) -> Result<AxonMessageStatus, Error> {
             let connect = HandshakeRequest {

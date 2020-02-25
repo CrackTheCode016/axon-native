@@ -4,11 +4,11 @@ pub mod bindings {
     use crate::command::command::Command;
     use crate::idenity::device_identity::Identity;
     use crate::init::init::AxonInit;
-    use neon::prelude::*;
     use crate::record::record::Record;
     use crate::serial::serial_handler::SerialData;
-    use serialport::prelude::*;
     use crate::state::device_state::State;
+    use neon::prelude::*;
+    use serialport::prelude::*;
     use std::borrow::BorrowMut;
     use std::time::Duration;
 
@@ -58,9 +58,10 @@ pub mod bindings {
         let command = cx.argument::<JsNumber>(1)?.value() as i8;
         let pin = cx.argument::<JsNumber>(2)?.value() as i8;
         let operation = cx.argument::<JsString>(3)?.value();
+        let amount = cx.argument::<JsNumber>(4)?.value() as i8;
 
         let status_obj = JsObject::new(&mut cx);
-        let response = Command::send_command(path, SETTINGS, command, pin, operation)
+        let response = Command::send_command(path, SETTINGS, command, pin, amount, operation)
             .or_else(|e| cx.throw_error(e.to_string()))?;
 
         let write_status = cx.boolean(response.status);

@@ -7,20 +7,19 @@ extern crate serde;
 extern crate serde_json;
 extern crate serialport;
 
+pub mod axonmessage;
 pub mod bindings;
 pub mod command;
 pub mod handshake;
 pub mod idenity;
 pub mod init;
+pub mod record;
 pub mod serial;
 pub mod state;
-pub mod axonmessage;
-pub mod record;
 
 use bindings::bindings::{
-    load_identity, serial_read, serial_rw,
-    serial_write, save_state, load_state, watch_state,
-    axon_init, send_command
+    axon_init, load_identity, load_state, save_state, send_command, serial_read, serial_rw,
+    serial_write, watch_record, watch_state,
 };
 
 pub const PARENT_PATH: &'static str = "/axon";
@@ -36,6 +35,7 @@ register_module!(mut m, {
     m.export_function("saveState", save_state)?;
     m.export_function("loadState", load_state)?;
     m.export_function("watchState", watch_state)?;
-    m.export_function("init", axon_init)?; 
+    m.export_function("watchRecord", watch_record)?;
+    m.export_function("init", axon_init)?;
     Ok(())
 });

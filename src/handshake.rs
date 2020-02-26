@@ -22,16 +22,6 @@ pub mod handshake {
         CommandMessage = 2,
     }
 
-    impl AxonMessageType {
-        fn to_int(&self) -> i8 {
-            match self {
-                AxonMessageType::CommandMessage => AxonMessageType::CommandMessage as i8,
-                AxonMessageType::StateMessage => AxonMessageType::StateMessage as i8,
-                AxonMessageType::RecordMessage => AxonMessageType::RecordMessage as i8,
-            }
-        }
-    }
-
     #[derive(Serialize, Deserialize)]
     #[serde(rename_all = "camelCase")]
     pub struct HandshakeRequest {

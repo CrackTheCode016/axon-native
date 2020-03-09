@@ -1,5 +1,5 @@
 pub mod device_state {
-    use crate::axonmessage::axonmessage::AxonMessage;
+    use crate::axonmessage::axonmessage::{AxonMessage, Message};
     use crate::handshake::handshake::{AxonMessageType, Handshake};
     use crate::serial::serial_handler::SerialData;
     use serde::{Deserialize, Serialize};
@@ -12,7 +12,7 @@ pub mod device_state {
     use std::io::Result as SingleResult;
     use std::path::Path;
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Debug)]
     #[serde(rename_all = "camelCase")]
     pub struct State {
         pub owner_public_key: String,
@@ -70,16 +70,20 @@ pub mod device_state {
         ) -> SingleResult<bool> {
             let mut port = SerialData::open_port(settings, &path)?;
             match Handshake::recieve::<State>(port.borrow_mut(), AxonMessageType::StateMessage) {
-                Ok(response) => {
-                    let state: State = serde_json::from_str(&response.to_json_string()?)?;
-                    State::save_state(
-                        state.owner_public_key,
-                        state.node_ip,
-                        state.gen_hash,
-                        state_path,
-                    )?;
-                    Ok(true)
-                }
+                Ok(response) => match response {
+                    Message::Empty => Ok(false),
+                    _ => {
+                        let state: State = serde_json::from_str(&response.to_json_string()?)?;
+                        println!("we have a state response.. {:?}", state);
+                        State::save_state(
+                            state.owner_public_key,
+                            state.node_ip,
+                            state.gen_hash,
+                            state_path,
+                        )?;
+                        Ok(true)
+                    }
+                },
                 Err(_) => Ok(false),
             }
         }

@@ -16,7 +16,7 @@ pub mod axonmessage {
         }
     }
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Debug)]
     #[serde(untagged)]
     pub enum Message<T> {
         AxonMessage(T),

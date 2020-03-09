@@ -106,6 +106,7 @@ pub mod bindings {
     pub fn watch_record(mut cx: FunctionContext) -> JsResult<JsString> {
         let path = cx.argument::<JsString>(0)?.value();
         let record = Record::watch(&path, SETTINGS).or_else(|e| cx.throw_error(e.to_string()))?;
+        println!("{:?}", record);
         let record_serialized = record
             .to_json_string()
             .or_else(|e| cx.throw_error(e.to_string()))?;

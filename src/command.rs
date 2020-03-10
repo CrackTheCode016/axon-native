@@ -1,39 +1,46 @@
 pub mod command {
 
-    use handshake::handshake::{Handshake, HandshakeMessage};
+    use crate::axonmessage::axonmessage::{AxonMessage, Sendable};
+    use crate::handshake::handshake::{AxonMessageStatus, AxonMessageType, Handshake};
+    use crate::serial::serial_handler::SerialData;
     use serde::{Deserialize, Serialize};
-    use serial::serial_handler::SerialData;
     use serialport::prelude::*;
     use std::borrow::BorrowMut;
-    use std::io::Result as SingleResult;
-    use std::io::{Error, ErrorKind};
+    use std::io::Error;
+
+    const COMAMND_PREFIX_BYTE: char = 'C';
 
     pub struct CommandResponse {
         pub status: bool,
         pub pin: i8,
-        pub response: String,
-    }
-
-    #[derive(Serialize, Deserialize)]
-    pub enum SensorCommand {
-        ON = 0x01,
-        OFF = 0x0,
-        UNKNOWN = 0x10,
+        pub operation: String,
     }
 
     #[derive(Serialize, Deserialize)]
     pub struct Command {
         operation: String,
         command: i8,
+        currency_amount: i8,
         pin: i8,
     }
 
-    impl SensorCommand {
-        pub fn from_i8(command: i8) -> SensorCommand {
-            match command {
-                0 => SensorCommand::OFF,
-                1 => SensorCommand::ON,
-                _ => SensorCommand::UNKNOWN,
+    impl AxonMessage for Command {}
+    impl Sendable for Command {}
+
+    impl CommandResponse {
+        fn success(command: &Command) -> Self {
+            CommandResponse {
+                status: true,
+                pin: command.pin,
+                operation: command.operation.clone(),
+            }
+        }
+
+        fn failure(command: &Command) -> Self {
+            CommandResponse {
+                status: false,
+                pin: command.pin,
+                operation: command.operation.clone(),
             }
         }
     }
@@ -44,34 +51,29 @@ pub mod command {
             settings: SerialPortSettings,
             command: i8,
             pin: i8,
+            currency_amount: i8,
             operation: String,
-        ) -> SingleResult<CommandResponse> {
+        ) -> Result<CommandResponse, Error> {
             let mut port = SerialData::open_port(settings, &path)?;
 
             let command = Command {
                 operation: operation,
                 command: command,
+                currency_amount: currency_amount,
                 pin: pin,
             };
 
-            match Handshake::handshake(port.borrow_mut()) {
+            match Handshake::send::<Command>(
+                port.borrow_mut(),
+                &command,
+                COMAMND_PREFIX_BYTE,
+                AxonMessageType::CommandMessage,
+            ) {
                 Ok(response) => match response {
-                    HandshakeMessage::ConnectionAccepted => {
-                        let command_str = format!("C{}", serde_json::to_string(&command)?);
-                        println!("{}", command_str);
-                        let write_status = SerialData::write_port(command_str, port.borrow_mut())?;
-                        let response = SerialData::read_port(port.borrow_mut())?;
-                        Ok(CommandResponse {
-                            status: write_status,
-                            pin: command.pin,
-                            response: response,
-                        })
-                    }
-                    HandshakeMessage::Unknown => Err(Error::from(ErrorKind::NotConnected)),
-                    _ => Err(Error::from(ErrorKind::NotConnected)),
+                    AxonMessageStatus::Success => Ok(CommandResponse::success(&command)),
+                    AxonMessageStatus::Failure => Ok(CommandResponse::failure(&command)),
                 },
-
-                Err(_) => Err(Error::from(ErrorKind::NotConnected)),
+                Err(e) => Err(e),
             }
         }
     }

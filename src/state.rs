@@ -1,7 +1,8 @@
 pub mod device_state {
-    use handshake::handshake::{Handshake, HandshakeMessage};
+    use crate::axonmessage::axonmessage::{AxonMessage, Message};
+    use crate::handshake::handshake::{AxonMessageType, Handshake};
+    use crate::serial::serial_handler::SerialData;
     use serde::{Deserialize, Serialize};
-    use serial::serial_handler::SerialData;
     use serialport::prelude::*;
     use std::borrow::BorrowMut;
     use std::fs;
@@ -9,43 +10,50 @@ pub mod device_state {
     use std::fs::OpenOptions;
     use std::io::prelude::*;
     use std::io::Result as SingleResult;
-    use std::io::{Error, ErrorKind};
     use std::path::Path;
 
-    #[derive(Serialize, Deserialize)]
+    #[derive(Serialize, Deserialize, Debug)]
+    #[serde(rename_all = "camelCase")]
     pub struct State {
-        pub user_private_key: String,
+        pub owner_public_key: String,
         pub node_ip: String,
         pub gen_hash: String,
     }
 
+    impl AxonMessage for State {}
+
     impl State {
-        pub fn exists() -> SingleResult<bool> {
-            Ok(Path::new(::STATE_PATH).exists())
+        pub fn exists() -> bool {
+            Path::new(crate::STATE_PATH).exists()
         }
 
-        pub fn init_state() -> SingleResult<()> {
-            fs::create_dir_all(::PARENT_PATH)?;
+        pub fn init_state(parent_path: &String, state_path: &String) -> SingleResult<()> {
+            fs::create_dir_all(parent_path)?;
             let empty_state = State {
-                user_private_key: String::new(),
+                owner_public_key: String::new(),
                 node_ip: String::new(),
                 gen_hash: String::new(),
             };
-            let mut state_file = File::create(::STATE_PATH)?;
+            let mut state_file = File::create(state_path)?;
             state_file.write_all(serde_json::to_string(&empty_state)?.as_bytes())?;
             Ok(())
         }
 
-        pub fn save_state(pk: String, node_ip: String, gen_hash: String) -> SingleResult<()> {
-            let mut state_file = OpenOptions::new().write(true).open(::STATE_PATH)?;
+        pub fn save_state(
+            pk: String,
+            node_ip: String,
+            gen_hash: String,
+            path: &String,
+        ) -> SingleResult<String> {
+            let mut state_file = OpenOptions::new().write(true).open(path)?;
             let new_state = State {
-                user_private_key: pk,
+                owner_public_key: pk,
                 node_ip: node_ip,
                 gen_hash: gen_hash,
             };
             let state_json = serde_json::to_string(&new_state)?;
             state_file.write_all(state_json.as_bytes())?;
-            Ok(())
+            Ok(state_json)
         }
 
         pub fn load_state(path: &String) -> SingleResult<String> {
@@ -55,38 +63,112 @@ pub mod device_state {
             Ok(state_string)
         }
 
-        pub fn watch_state(path: &String, settings: SerialPortSettings) -> SingleResult<bool> {
+        pub fn watch_state(
+            state_path: &String,
+            path: &String,
+            settings: SerialPortSettings,
+        ) -> SingleResult<bool> {
             let mut port = SerialData::open_port(settings, &path)?;
-            loop {
-                let data = SerialData::read_port(port.borrow_mut())?;
-                if data.contains("I1") {
-                    println!("Data found! {}", data);
-                    match Handshake::handshake(port.borrow_mut()) {
-                        Ok(response) => match response {
-                            HandshakeMessage::ConnectionAccepted => {
-                                let data = SerialData::read_port(port.borrow_mut())?;
-                                println!("Data found! {}", data);
-                                if data.contains("SI") {
-                                    let state: State =
-                                        serde_json::from_str(&data.replace("SI", ""))?;
-                                    State::save_state(
-                                        state.user_private_key,
-                                        state.node_ip,
-                                        state.gen_hash,
-                                    )?;
-                                }
-                            }
-
-                            HandshakeMessage::Unknown => (),
-                            _ => (),
-                        },
-
-                        Err(err) => (),
+            match Handshake::recieve::<State>(port.borrow_mut(), AxonMessageType::StateMessage) {
+                Ok(response) => match response {
+                    Message::Empty => Ok(false),
+                    _ => {
+                        let state: State = serde_json::from_str(&response.to_json_string()?)?;
+                        println!("we have a state response.. {:?}", state);
+                        State::save_state(
+                            state.owner_public_key,
+                            state.node_ip,
+                            state.gen_hash,
+                            state_path,
+                        )?;
+                        Ok(true)
                     }
-                    break Ok(true);
-                }
-                break Ok(false);
+                },
+                Err(_) => Ok(false),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::state::device_state::State;
+    use rand::Rng;
+    use serde_json;
+    use std::path::PathBuf;
+
+    #[test]
+    fn load_state() {
+        let mut test_path: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        test_path.push("resources/test_files/state/load_state.json");
+        let path_as_str = &String::from(test_path.to_str().unwrap());
+        let state_config: State = State {
+            owner_public_key: String::from(
+                "3485D98EFD7EB07ADAFCFD1A157D89DE2796A95E780813C0258AF3F5F84ED8CB",
+            ),
+            node_ip: String::from("http://198.199.80.167:3000"),
+            gen_hash: String::from(
+                "B626827FBD912D95931E03E9718BFE8FFD7D316E9FBB5416ED2B3C072EA32406",
+            ),
+        };
+        let state_as_str = serde_json::to_string(&state_config).unwrap();
+        let loaded_state = State::load_state(path_as_str);
+        assert_eq!(loaded_state.is_ok(), true);
+        assert_eq!(state_as_str, loaded_state.unwrap());
+    }
+
+    #[test]
+    fn save_state() {
+        let mut test_path: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        test_path.push("resources/test_files/state/save_state.json");
+        let path_as_str = &String::from(test_path.to_str().unwrap());
+        let mut rng = rand::thread_rng();
+        let rando = rng.gen::<i32>();
+        let ip = format!("http://{}.{}.{}.{}:3000", rando, rando, rando, rando);
+
+        let new_state_config: State = State {
+            owner_public_key: String::from(
+                "B626827FBD912D95931E03E9718BFE8FFD7D316E9FBB5416ED2B3C072EA32406",
+            ),
+            node_ip: ip,
+            gen_hash: String::from(
+                "8985D98EFD7EB07ADAFCFD1A157D89DE2796A95E780813C0258AF3F5F84ED8CB",
+            ),
+        };
+
+        let new_config_as_str = serde_json::to_string(&new_state_config).unwrap();
+        let saved_state = State::save_state(
+            new_state_config.owner_public_key,
+            new_state_config.node_ip,
+            new_state_config.gen_hash,
+            path_as_str,
+        );
+        assert_eq!(saved_state.is_ok(), true);
+        assert_eq!(saved_state.unwrap(), new_config_as_str);
+    }
+
+    #[test]
+    fn init_state() {
+        let empty_state = State {
+            owner_public_key: String::new(),
+            node_ip: String::new(),
+            gen_hash: String::new(),
+        };
+
+        let empty_state_as_str = serde_json::to_string(&empty_state).unwrap();
+
+        let mut root: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        root.push("resources/test_files/state/parent_state");
+        let parent_path_as_str = String::from(root.to_str().unwrap());
+        root.push("state.json");
+        let state_path_as_str = String::from(root.to_str().unwrap());
+
+        println!("{} {}", parent_path_as_str, state_path_as_str);
+        let init = State::init_state(&parent_path_as_str, &state_path_as_str);
+        assert_eq!(init.is_ok(), true);
+        assert_eq!(
+            State::load_state(&state_path_as_str).unwrap(),
+            empty_state_as_str
+        );
     }
 }

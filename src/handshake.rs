@@ -80,19 +80,18 @@ pub mod handshake {
                 match parsed {
                     Ok(result) => match result.handshake_type {
                         AxonHandshakeType::HandshakeConnect => {
-                            println!("{}, {:?}, {:?}", result.message_type == message_type, result.message_type, message_type);
                             if result.message_type == message_type {
                                 SerialData::write_port(accept_stringifed, port.borrow_mut())?;
                                 Ok(loop {
                                     let data = SerialData::read_port(port.borrow_mut())?;
-                                    println!("Now we wait {}", data);
                                     if Self::check_type_from_str::<T>(&data) {
                                         let message: Message<T> = serde_json::from_str(&data)?;
                                         break message;
                                     }
                                 })
                             } else {
-                                Ok(Message::Empty)
+                                println!("Not the right type");
+                                Err(Error::from(ErrorKind::InvalidData))
                             }
                         }
                         _ => Ok(Message::Empty),
